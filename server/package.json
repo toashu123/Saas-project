@@ -20,9 +20,10 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "form-data": "^4.0.5",
     "multer": "^2.0.2",
     "openai": "^6.3.0",
-    "pdfjs-dist": "^5.4.449"
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

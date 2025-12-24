@@ -5,7 +5,8 @@ import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 // import { createRequire } from "module";
 import axios from "axios";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
+import pdfParse from "pdf-parse";
+import FormData from "form-data";
 
 // const require = createRequire(import.meta.url);
 // const pdfModule = require("pdf-parse");
@@ -125,6 +126,7 @@ export const generateImage = async (req, res) => {
       formData,
       {
         headers: {
+          ...formData.getHeaders(),
           "x-api-key": process.env.CLIPDROP_API_KEY,
         },
         responseType: "arraybuffer",
@@ -162,13 +164,19 @@ export const generateImage = async (req, res) => {
 export const removeImageBackground = async (req, res) => {
   try {
     const { userId } = req.auth();
-    const { image } = req.file;
+    const image = req.file;
     const plan = req.plan;
 
     if (plan !== "premium")
       return res.status(403).json({
         success: false,
         message: "This feature is only for premium users.",
+      });
+      
+    if (!image)
+      return res.status(400).json({
+        success: false,
+        message: "Image file is required.",
       });
 
     const { secure_url } = await cloudinary.uploader.upload(image.path, {
@@ -199,7 +207,7 @@ export const removeImageObject = async (req, res) => {
   try {
     const { userId } = req.auth();
     const { object } = req.body;
-    const { image } = req.file;
+    const image = req.file;
     const plan = req.plan;
 
     if (plan !== "premium")
@@ -208,15 +216,21 @@ export const removeImageObject = async (req, res) => {
         message: "This feature is only for premium users.",
       });
 
+    if (!image)
+      return res.status(400).json({
+        success: false,
+        message: "Image file is required.",
+      });
+
     const { public_id } = await cloudinary.uploader.upload(image.path);
 
     const imageUrl = cloudinary.url(public_id, {
       transformation: [
         {
-          effect: `gen_remove:${object}`
-        }
+          effect: `gen_remove:${object}`,
+        },
       ],
-      resource_type: "image"
+      resource_type: "image",
     });
 
     await sql`
@@ -258,20 +272,9 @@ export const resumeReview = async (req, res) => {
         message: "Resume file exceeds 5MB limit.",
       });
 
-    const { getDocument } = pdfjs;
+    const data = await pdfParse(resume.buffer || fs.readFileSync(resume.path));
 
-    const dataBuffer = new Uint8Array(fs.readFileSync(resume.path));
-    const loadingTask = getDocument({ data: dataBuffer });
-    const pdfDoc = await loadingTask.promise;
-
-    let text = "";
-    for (let i = 1; i <= pdfDoc.numPages; i++) {
-      const page = await pdfDoc.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map((i) => i.str).join(" ") + "\n";
-    }
-
-    const prompt = `Review the following resume and provide constructive feedback, including strengths, weaknesses, and areas for improvement:\n\n${text}`;
+    const prompt = `Review the following resume and provide constructive feedback, including strengths, weaknesses, and areas for improvement:\n\n${data.text}`;
 
     const result = await geminiTextModel.generateContent(prompt);
     const content = result.response.text();
